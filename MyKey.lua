@@ -20,7 +20,6 @@ function core:GetLastResetTime()
     local now = time()
     local current = date("*t", now)
     
-    -- Lua weekday format: Sunday = 1, Monday = 2, Tuesday = 3, Wednesday = 4...
     local diff = current.wday - 4
     if diff < 0 then
         diff = diff + 7
@@ -28,7 +27,6 @@ function core:GetLastResetTime()
         diff = 7
     end
     
-    -- Subtract day delta to target the correct calendar date, then hardcode 4:00:00 AM
     local targetDayTime = now - (diff * 86400)
     local resetDate = date("*t", targetDayTime)
     resetDate.hour = 4
@@ -53,7 +51,7 @@ function core:Init()
     core:CreateUIFrame()
     core:BroadcastOwnKey()
     
-    print("|cffcb9cff[MKR]|r Addon Loaded. Auto-pruning keys set to Wednesdays at 4:00 AM.")
+    print("|cffcb9cff[MKR]|r Addon Loaded. Dynamic scroll frames initialized smoothly.")
 end
 
 function core:FindKeys()
@@ -77,7 +75,7 @@ end
 
 function core:GossipRecord(targetPlayer, keyStr, timestamp)
     local cutoff = core:GetLastResetTime()
-    if timestamp < cutoff then return end -- Shield outbound channel from sending obsolete data
+    if timestamp < cutoff then return end
     
     local payload = string.format("%s~%s~%d", targetPlayer, keyStr, timestamp)
     
@@ -170,29 +168,20 @@ function core:CreateUIFrame()
     
     local pR, pG, pB, pA = 0.52, 0.33, 0.81, 0.85
     
-    local borderRight = f:CreateTexture(nil, "BORDER")
-    borderRight:SetWidth(1.5)
-    borderRight:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-    borderRight:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
-    borderRight:SetTexture(pR, pG, pB, pA)
-    
-    local borderLeft = f:CreateTexture(nil, "BORDER")
-    borderLeft:SetWidth(1.5)
-    borderLeft:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-    borderLeft:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
-    borderLeft:SetTexture(pR, pG, pB, pA)
-    
-    local borderTop = f:CreateTexture(nil, "BORDER")
-    borderTop:SetHeight(1.5)
-    borderTop:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-    borderTop:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-    borderTop:SetTexture(pR, pG, pB, pA)
-    
-    local borderBottom = f:CreateTexture(nil, "BORDER")
-    borderBottom:SetHeight(1.5)
-    borderBottom:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
-    borderBottom:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
-    borderBottom:SetTexture(pR, pG, pB, pA)
+    -- Outer borders
+    local borders = {"TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT"}
+    for _, p in ipairs(borders) do
+        local b = f:CreateTexture(nil, "BORDER")
+        if string.find(p, "TOP") or string.find(p, "BOTTOM") then
+            b:SetHeight(1.5)
+            b:SetPoint(p:gsub("LEFT","RIGHT"), f, p:gsub("LEFT","RIGHT"), 0, 0)
+        else
+            b:SetWidth(1.5)
+            b:SetPoint(p:gsub("TOP","BOTTOM"), f, p:gsub("TOP","BOTTOM"), 0, 0)
+        end
+        b:SetPoint(p, f, p, 0, 0)
+        b:SetTexture(pR, pG, pB, pA)
+    end
     
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOP", f, "TOP", 0, -12)
@@ -203,6 +192,45 @@ function core:CreateUIFrame()
     titleLine:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -28)
     titleLine:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -28)
     titleLine:SetTexture(pR, pG, pB, 0.4)
+    
+    -- NEW UX FEATURE: Native ScrollFrame Container Setup
+    local sf = CreateFrame("ScrollFrame", nil, f)
+    sf:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -36)
+    sf:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -22, 12) -- Clear right boundary margin space for slider
+    sf:EnableMouseWheel(true)
+    f.scrollFrame = sf
+    
+    -- Canvas Container targeting row generation layout
+    local sc = CreateFrame("Frame", nil, sf)
+    sc:SetWidth(174)
+    sc:SetHeight(1)
+    sf:SetScrollChild(sc)
+    f.scrollChild = sc
+    
+    -- COLOR MATCH: Sleek, custom minimalist vertical scrolling thumb track slider
+    local sb = CreateFrame("Slider", nil, f)
+    sb:SetWidth(4)
+    sb:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -36)
+    sb:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 12)
+    sb:SetMinMaxValues(0, 1)
+    sb:SetValue(0)
+    sb:SetValueStep(1)
+    
+    local thumb = sb:CreateTexture(nil, "BACKGROUND")
+    thumb:SetTexture(pR, pG, pB, pA) -- Matches your exact frame purple accent
+    thumb:SetWidth(4)
+    thumb:SetHeight(32)
+    sb:SetThumbTexture(thumb)
+    f.slider = sb
+    
+    -- Scroll Event Listeners
+    sf:SetScript("OnMouseWheel", function(self, delta)
+        local curr = sb:GetValue()
+        sb:SetValue(curr - (delta * 25)) -- Incremental scroll speed configuration step
+    end)
+    sb:SetScript("OnValueChanged", function(self, value)
+        sf:SetVerticalScroll(value)
+    end)
     
     core.displayFrame = f
     f:Hide()
@@ -220,9 +248,7 @@ function core:CreateUIFrame()
                     local closeBtn = CreateFrame("Button", nil, MythicPlusFrame, "UIPanelCloseButton")
                     closeBtn:SetPoint("TOPRIGHT", MythicPlusFrame, "TOPRIGHT", -4, -4)
                     closeBtn:SetFrameLevel((MythicPlusFrame:GetFrameLevel() or 71) + 10)
-                    closeBtn:SetScript("OnClick", function()
-                        MythicPlusFrame:Hide()
-                    end)
+                    closeBtn:SetScript("OnClick", function() MythicPlusFrame:Hide() end)
                     MythicPlusFrame.mkrCloseButton = closeBtn
                 end
 
@@ -260,7 +286,6 @@ function core:UpdateUI()
     if not core.displayFrame then return end
     local f = core.displayFrame
     
-    -- Run a real-time safety prune before redraw cycles
     core:PruneExpiredKeys()
     
     f.rows = f.rows or {}
@@ -270,10 +295,12 @@ function core:UpdateUI()
     end
     
     local rowId = 1
+    local currentY = 0 -- Absolute coordinate tracking accumulator
     
     local function AddLine(labelText, itemLink, isHeader, isPlayer)
         if not f.rows[rowId] then
-            local row = CreateFrame("Button", nil, f)
+            -- Parent elements securely to the moving scroll child canvas instead of base window frame
+            local row = CreateFrame("Button", nil, f.scrollChild)
             row:SetHeight(15)
             
             local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -283,15 +310,13 @@ function core:UpdateUI()
             
             row:SetScript("OnEnter", function(self)
                 if self.link then
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
                     GameTooltip:SetHyperlink(self.link)
                     GameTooltip:Show()
                 end
             end)
             
-            row:SetScript("OnLeave", function(self)
-                GameTooltip:Hide()
-            end)
+            row:SetScript("OnLeave", function(self) GameTooltip:Hide() end)
             
             row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             row:SetScript("OnClick", function(self, button)
@@ -319,16 +344,18 @@ function core:UpdateUI()
             row.text:SetFontObject("GameFontHighlightSmall")
         end
         
-        row:ClearAllPoints()
-        if rowId == 1 then
-            row:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -36)
-            row:SetPoint("RIGHT", f, "RIGHT", -14, 0)
-        else
-            local spacing = isHeader and -14 or (isPlayer and -8 or -2)
-            row:SetPoint("TOPLEFT", f.rows[rowId-1], "BOTTOMLEFT", 0, spacing)
-            row:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+        -- UX CRITICAL FIX: Calculate absolute y positions to keep scroll steps pixel-perfect
+        local extraSpacing = 0
+        if rowId > 1 then
+            extraSpacing = isHeader and 14 or (isPlayer and 8 or 2)
         end
+        currentY = currentY + extraSpacing
         
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", f.scrollChild, "TOPLEFT", 0, -currentY)
+        row:SetPoint("RIGHT", f.scrollChild, "RIGHT", 0, 0)
+        
+        currentY = currentY + 15 -- Increment position by base row height
         row:Show()
         rowId = rowId + 1
     end
@@ -377,15 +404,31 @@ function core:UpdateUI()
         end
     end
     
+    -- Dynamically calculate scroll math constraints
     if rowId == 1 then
         if not f.emptyText then
-            f.emptyText = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            f.emptyText:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -36)
+            f.emptyText = f.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            f.emptyText:SetPoint("TOPLEFT", f.scrollChild, "TOPLEFT", 0, 0)
             f.emptyText:SetText("No keys stored.")
         end
         f.emptyText:Show()
+        f.scrollChild:SetHeight(15)
+        f.slider:SetMinMaxValues(0, 0)
+        f.slider:Hide()
     else
         if f.emptyText then f.emptyText:Hide() end
+        f.scrollChild:SetHeight(currentY)
+        
+        local maxScroll = math.max(0, currentY - f.scrollFrame:GetHeight())
+        f.slider:SetMinMaxValues(0, maxScroll)
+        
+        -- Smooth visibility mapping for the custom scroll track thumb line
+        if maxScroll == 0 then
+            f.slider:Hide()
+            f.slider:SetValue(0)
+        else
+            f.slider:Show()
+        end
     end
 end
 
@@ -419,8 +462,6 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
             
         elseif prefix == "MKR_RESP" then
             if sender and text then
-                local lastReset = core:GetLastResetTime()
-                -- Fallback filter for structural edge cases
                 MKR_DB[sender] = { key = text, time = time() }
                 core:UpdateUI()
             end
@@ -431,8 +472,6 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
             
             if pName and keyStr and tStamp then
                 local lastReset = core:GetLastResetTime()
-                
-                -- NETWORK FILTER: Permanently drops historical packets originating from previous weeks
                 if tStamp >= lastReset then
                     local current = MKR_DB[pName]
                     if not current or tStamp > current.time then
