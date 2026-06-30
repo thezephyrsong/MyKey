@@ -27,7 +27,6 @@ function core:Init()
     core:CreateUIFrame()
     core:BroadcastOwnKey()
     
-    -- UPDATED: Command hint on login
     print("|cffcb9cff[MKR]|r Standalone Addon Loaded. Type |cff00ffff/mykey|r to see options.")
 end
 
@@ -50,10 +49,22 @@ function core:FindKeys()
     return keys
 end
 
+-- Sends a record to the Guild and targets online friends directly via Whisper
 function core:GossipRecord(targetPlayer, keyStr, timestamp)
-    if not IsInGuild() then return end
     local payload = string.format("%s~%s~%d", targetPlayer, keyStr, timestamp)
-    SendAddonMessage("MKR_MESH", payload, "GUILD")
+    
+    -- 1. Guild Broadcast Pathway
+    if IsInGuild() then
+        SendAddonMessage("MKR_MESH", payload, "GUILD")
+    end
+    
+    -- 2. Targeted Friends Pathway
+    for i = 1, GetNumFriends() do
+        local name, _, _, _, connected = GetFriendInfo(i)
+        if connected and name then
+            SendAddonMessage("MKR_MESH", payload, "WHISPER", name)
+        end
+    end
 end
 
 function core:BroadcastOwnKey()
@@ -67,7 +78,19 @@ function core:BroadcastOwnKey()
     core:UpdateUI()
 end
 
-function core:GossipEntireDatabase()
+function core:GossipEntireDatabase(targetWhisperPlayer)
+    -- If a friend requested updates, reply ONLY to them via whisper to prevent network spam
+    if targetWhisperPlayer then
+        for player, data in pairs(MKR_DB) do
+            if type(data) == "table" and data.key and data.time then
+                local payload = string.format("%s~%s~%d", player, data.key, data.time)
+                SendAddonMessage("MKR_MESH", payload, "WHISPER", targetWhisperPlayer)
+            end
+        end
+        return
+    end
+
+    -- Otherwise, cascade out standard staggered updates to the Guild channel
     if not IsInGuild() then return end
     for player, data in pairs(MKR_DB) do
         if type(data) == "table" and data.key and data.time then
@@ -128,7 +151,7 @@ function core:CreateUIFrame()
     
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOP", f, "TOP", 0, -12)
-    title:SetText("Guild Keystones")
+    title:SetText("Keystones")
     
     local text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     text:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -32)
@@ -159,7 +182,17 @@ function core:CreateUIFrame()
                     
                     if not f:IsShown() then
                         f:Show()
+                        
+                        -- Global Handshake: Ping the Guild
                         SendAddonMessage("MKR_REQ", "REQ", "GUILD")
+                        
+                        -- Targeted Handshake: Silent whisper pings to all online friends
+                        for i = 1, GetNumFriends() do
+                            local name, _, _, _, connected = GetFriendInfo(i)
+                            if connected and name then
+                                SendAddonMessage("MKR_REQ", "REQ", "WHISPER", name)
+                            end
+                        end
                     end
                     lastState = true
                 else
@@ -174,19 +207,44 @@ end
 
 function core:UpdateUI()
     if not core.displayFrame or not core.displayFrame.text then return end
-    local lines = {}
+    
+    local guildLines = {}
+    local friendLines = {}
+    local myName = UnitName("player")
+    
+    -- Generate an optimized O(1) map of online friends for quick segregation
+    local friendsMap = {}
+    for i = 1, GetNumFriends() do
+        local name = GetFriendInfo(i)
+        if name then friendsMap[name] = true end
+    end
     
     for player, data in pairs(MKR_DB) do
-        if type(data) == "table" and data.key and data.key ~= "NONE" then
+        if type(data) == "table" and data.key and data.key ~= "NONE" and player ~= myName then
             local cleanKeys = string.gsub(data.key, ",", "\n   ")
-            table.insert(lines, "|cffcb9cff" .. player .. "|r:\n   " .. cleanKeys)
+            local entryText = "|cffcb9cff" .. player .. "|r:\n   " .. cleanKeys
+            
+            if friendsMap[player] then
+                table.insert(friendLines, entryText)
+            else
+                table.insert(guildLines, entryText)
+            end
         end
     end
     
-    if #lines == 0 then
+    -- Construct Categorized Interface Layout
+    local finalDisplay = ""
+    if #guildLines > 0 then
+        finalDisplay = finalDisplay .. "|cffffd100[Guild]|r\n" .. table.concat(guildLines, "\n\n") .. "\n\n"
+    end
+    if #friendLines > 0 then
+        finalDisplay = finalDisplay .. "|cff00ffff[Friends]|r\n" .. table.concat(friendLines, "\n\n")
+    end
+    
+    if finalDisplay == "" then
         core.displayFrame.text:SetText("\n|cff888888No keys stored.|r")
     else
-        core.displayFrame.text:SetText(table.concat(lines, "\n\n"))
+        core.displayFrame.text:SetText(finalDisplay)
     end
 end
 
@@ -212,12 +270,19 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
         if sender then sender = string.match(sender, "([^-]+)") end
         
         if prefix == "MKR_REQ" then
-            core:GossipEntireDatabase()
+            if channel == "WHISPER" and sender then
+                -- Direct Whisper reply targeting ONLY the requesting friend
+                core:GossipEntireDatabase(sender)
+            else
+                core:GossipEntireDatabase()
+            end
+            
         elseif prefix == "MKR_RESP" then
             if sender and text then
                 MKR_DB[sender] = { key = text, time = time() }
                 core:UpdateUI()
             end
+            
         elseif prefix == "MKR_MESH" and text then
             local pName, keyStr, tStamp = string.match(text, "([^~]+)~([^~]+)~([^~]+)")
             tStamp = tonumber(tStamp)
@@ -272,7 +337,6 @@ SlashCmdList["MYTHICKEYSTONES"] = function(msg)
         local keys = core:FindKeys()
         print("|cffcb9cff--- Mythic Keystones Local Control Panel ---|r")
         print("Your Active Keys: " .. (#keys > 0 and table.concat(keys, " & ") or "|cff888888None Found|r"))
-        -- UPDATED: Updated text hint command context
         print("|cff00ffffToggles (Type /mykey [option]):|r")
         print("  |cffcb9cffguild|r - Guild Channel: " .. (MKR_DB_CONFIG.optGuild and "|cff00ff00ON|r" or "|cffff0000OFF|r"))
         print("  |cffcb9cffparty|r - Party Channel: " .. (MKR_DB_CONFIG.optParty and "|cff00ff00ON|r" or "|cffff0000OFF|r"))
@@ -281,6 +345,5 @@ SlashCmdList["MYTHICKEYSTONES"] = function(msg)
     end
 end
 
--- NEW COMMAND ASSIGNMENTS:
 SLASH_MYTHICKEYSTONES1 = "/mykeyres"
 SLASH_MYTHICKEYSTONES2 = "/mykey"
