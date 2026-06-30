@@ -27,7 +27,7 @@ function core:Init()
     core:CreateUIFrame()
     core:BroadcastOwnKey()
     
-    print("|cffcb9cff[MKR]|r Interactive Interface Loaded. Type |cff00ffff/mykey|r to see options.")
+    print("|cffcb9cff[MKR]|r Addon Loaded. Use |cff00ffff/mykey|r for options, or |cff00ffff/m+|r to toggle the interface.")
 end
 
 function core:FindKeys()
@@ -220,8 +220,6 @@ function core:UpdateUI()
     local f = core.displayFrame
     
     f.rows = f.rows or {}
-    
-    -- Recycle and clear visibility settings for all row objects
     for _, row in ipairs(f.rows) do
         row:Hide()
         row.link = nil
@@ -229,7 +227,6 @@ function core:UpdateUI()
     
     local rowId = 1
     
-    -- Optimized inner factory method handling click mechanics and text layout
     local function AddLine(labelText, itemLink, isHeader, isPlayer)
         if not f.rows[rowId] then
             local row = CreateFrame("Button", nil, f)
@@ -240,7 +237,6 @@ function core:UpdateUI()
             text:SetJustifyH("LEFT")
             row.text = text
             
-            -- Tooltip Hook Integration
             row:SetScript("OnEnter", function(self)
                 if self.link then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -253,7 +249,6 @@ function core:UpdateUI()
                 GameTooltip:Hide()
             end)
             
-            -- Full Click Handler Setup (Pasting, Tooltips, Link refs)
             row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             row:SetScript("OnClick", function(self, button)
                 if self.link then
@@ -294,7 +289,6 @@ function core:UpdateUI()
         rowId = rowId + 1
     end
     
-    -- Filter database listings
     local guildLines = {}
     local friendLines = {}
     local myName = UnitName("player")
@@ -315,14 +309,12 @@ function core:UpdateUI()
         end
     end
     
-    -- Process layout rendering rows
     if #guildLines > 0 then
         AddLine("[Guild]", nil, true, false)
         for _, player in ipairs(guildLines) do
             AddLine(player .. ":", nil, false, true)
             local data = MKR_DB[player]
             for link in string.gmatch(data.key, "[^,]+") do
-                -- UI TEXT FIX: Clear the "Mythic Keystone:" prefix safely from display string
                 local displayLink = string.gsub(link, "Mythic Keystone:%s*", "")
                 AddLine("   " .. displayLink, link, false, false)
             end
@@ -341,7 +333,6 @@ function core:UpdateUI()
         end
     end
     
-    -- Empty View Fallback Text Block
     if rowId == 1 then
         if not f.emptyText then
             f.emptyText = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -422,7 +413,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
     end
 end)
 
--- Option Panel Cmds
+-- Option Panel Commands (/mykey and /mykeyres)
 SlashCmdList["MYTHICKEYSTONES"] = function(msg)
     msg = string.lower(msg or "")
     if msg == "guild" then
@@ -448,6 +439,20 @@ SlashCmdList["MYTHICKEYSTONES"] = function(msg)
         print("  |cffcb9cffofficer|r - Officer Channel: " .. (MKR_DB_CONFIG.optOfficer and "|cff00ff00ON|r" or "|cffff0000OFF|r"))
     end
 end
-
 SLASH_MYTHICKEYSTONES1 = "/mykeyres"
 SLASH_MYTHICKEYSTONES2 = "/mykey"
+
+-- NEW UX FEATURE: MythicPlusFrame Toggle Window Script Commands (/m+ and /mythic)
+SlashCmdList["MYTHICPLUSTOGGLE"] = function(msg)
+    if MythicPlusFrame then
+        if MythicPlusFrame:IsShown() then
+            MythicPlusFrame:Hide()
+        else
+            MythicPlusFrame:Show()
+        end
+    else
+        print("|cffcb9cff[MKR]|r Error: MythicPlusFrame not detected in this session. Is the server module disabled?")
+    end
+end
+SLASH_MYTHICPLUSTOGGLE1 = "/m+"
+SLASH_MYTHICPLUSTOGGLE2 = "/mythic"
