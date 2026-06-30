@@ -42,6 +42,7 @@ World of Warcraft/
 
 ### Slash Commands
 * `/mykey` or `/mykeyres` — Opens the local control panel configuration menu.
+* `/m+` or `/mythic` opens the whole Mythic Plus frame for Triumvirate
 
 #### Configuration Options (Toggles)
 Type these commands to enable or disable auto-responding to specific text chat invites:
