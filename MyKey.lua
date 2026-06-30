@@ -188,8 +188,8 @@ function core:CreateUIFrame()
                 -- NEW FEATURE: Safe, dynamic Injection of the standard Close Button onto the server frame
                 if not MythicPlusFrame.mkrCloseButton then
                     local closeBtn = CreateFrame("Button", nil, MythicPlusFrame, "UIPanelCloseButton")
-                    -- Offset parameters to neatly clear the ornate frame corners (-4, -4)
-                    closeBtn:SetPoint("TOPRIGHT", MythicPlusFrame, "TOPRIGHT", -6, -34)
+                    -- Offset parameters to neatly clear the ornate frame corners
+                    closeBtn:SetPoint("TOPRIGHT", MythicPlusFrame, "TOPRIGHT", -6, -62)
                     closeBtn:SetFrameLevel((MythicPlusFrame:GetFrameLevel() or 71) + 10)
                     closeBtn:SetScript("OnClick", function()
                         MythicPlusFrame:Hide()
