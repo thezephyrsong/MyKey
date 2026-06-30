@@ -189,7 +189,7 @@ function core:CreateUIFrame()
                 if not MythicPlusFrame.mkrCloseButton then
                     local closeBtn = CreateFrame("Button", nil, MythicPlusFrame, "UIPanelCloseButton")
                     -- Offset parameters to neatly clear the ornate frame corners (-4, -4)
-                    closeBtn:SetPoint("TOPRIGHT", MythicPlusFrame, "TOPRIGHT", -4, -4)
+                    closeBtn:SetPoint("TOPRIGHT", MythicPlusFrame, "TOPRIGHT", -6, -34)
                     closeBtn:SetFrameLevel((MythicPlusFrame:GetFrameLevel() or 71) + 10)
                     closeBtn:SetScript("OnClick", function()
                         MythicPlusFrame:Hide()
