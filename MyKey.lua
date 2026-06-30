@@ -51,7 +51,7 @@ function core:Init()
     core:CreateUIFrame()
     core:BroadcastOwnKey()
     
-    print("|cffcb9cff[MKR]|r Addon Loaded. Dynamic scroll frames initialized smoothly.")
+    print("|cffcb9cff[MKR]|r Addon Loaded. Unified omni-search field successfully online.")
 end
 
 function core:FindKeys()
@@ -168,7 +168,7 @@ function core:CreateUIFrame()
     
     local pR, pG, pB, pA = 0.52, 0.33, 0.81, 0.85
     
-    -- Outer borders
+    -- Outer panel borders
     local borders = {"TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT"}
     for _, p in ipairs(borders) do
         local b = f:CreateTexture(nil, "BORDER")
@@ -193,40 +193,67 @@ function core:CreateUIFrame()
     titleLine:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -28)
     titleLine:SetTexture(pR, pG, pB, 0.4)
     
-    -- NEW UX FEATURE: Native ScrollFrame Container Setup
+    -- NEW UX FEATURE: Dynamic Native EditBox (Search Input Field)
+    local sbBox = CreateFrame("EditBox", nil, f)
+    sbBox:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -34)
+    sbBox:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -34)
+    sbBox:SetHeight(18)
+    sbBox:SetFontObject("GameFontHighlightSmall")
+    sbBox:SetAutoFocus(false)
+    sbBox:SetTextInsets(6, 6, 0, 0)
+    
+    local sbBorder = sbBox:CreateTexture(nil, "BORDER")
+    sbBorder:SetPoint("TOPLEFT", sbBox, "TOPLEFT", -1, 1)
+    sbBorder:SetPoint("BOTTOMRIGHT", sbBox, "BOTTOMRIGHT", 1, -1)
+    sbBorder:SetTexture(pR, pG, pB, 0.4)
+    
+    local sbBg = sbBox:CreateTexture(nil, "BACKGROUND")
+    sbBg:SetAllPoints()
+    sbBg:SetTexture(0.02, 0.01, 0.04, 1)
+    
+    local ph = sbBox:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    ph:SetPoint("LEFT", sbBox, "LEFT", 6, 0)
+    ph:SetText("Search keys...")
+    
+    sbBox:SetScript("OnTextChanged", function(self)
+        if self:GetText() == "" then ph:Show() else ph:Hide() end
+        core:UpdateUI()
+    end)
+    sbBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    f.searchBox = sbBox
+    
+    -- ScrollFrame Layout (Pushed downward to coordinate Y=-62 to leave clean room for the search input layout)
     local sf = CreateFrame("ScrollFrame", nil, f)
-    sf:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -36)
-    sf:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -22, 12) -- Clear right boundary margin space for slider
+    sf:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -62)
+    sf:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -22, 12)
     sf:EnableMouseWheel(true)
     f.scrollFrame = sf
     
-    -- Canvas Container targeting row generation layout
     local sc = CreateFrame("Frame", nil, sf)
     sc:SetWidth(174)
     sc:SetHeight(1)
     sf:SetScrollChild(sc)
     f.scrollChild = sc
     
-    -- COLOR MATCH: Sleek, custom minimalist vertical scrolling thumb track slider
+    -- Custom tracking scrollbar slider layout
     local sb = CreateFrame("Slider", nil, f)
     sb:SetWidth(4)
-    sb:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -36)
+    sb:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -62)
     sb:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 12)
     sb:SetMinMaxValues(0, 1)
     sb:SetValue(0)
     sb:SetValueStep(1)
     
     local thumb = sb:CreateTexture(nil, "BACKGROUND")
-    thumb:SetTexture(pR, pG, pB, pA) -- Matches your exact frame purple accent
+    thumb:SetTexture(pR, pG, pB, pA)
     thumb:SetWidth(4)
     thumb:SetHeight(32)
     sb:SetThumbTexture(thumb)
     f.slider = sb
     
-    -- Scroll Event Listeners
     sf:SetScript("OnMouseWheel", function(self, delta)
         local curr = sb:GetValue()
-        sb:SetValue(curr - (delta * 25)) -- Incremental scroll speed configuration step
+        sb:SetValue(curr - (delta * 25))
     end)
     sb:SetScript("OnValueChanged", function(self, value)
         sf:SetVerticalScroll(value)
@@ -273,7 +300,11 @@ function core:CreateUIFrame()
                     end
                     lastState = true
                 else
-                    if lastState then f:Hide() lastState = false end
+                    if lastState then 
+                        f.searchBox:ClearFocus()
+                        f:Hide() 
+                        lastState = false 
+                    end
                 end
             else
                 if lastState then f:Hide() lastState = false end
@@ -295,11 +326,10 @@ function core:UpdateUI()
     end
     
     local rowId = 1
-    local currentY = 0 -- Absolute coordinate tracking accumulator
+    local currentY = 0
     
     local function AddLine(labelText, itemLink, isHeader, isPlayer)
         if not f.rows[rowId] then
-            -- Parent elements securely to the moving scroll child canvas instead of base window frame
             local row = CreateFrame("Button", nil, f.scrollChild)
             row:SetHeight(15)
             
@@ -344,7 +374,6 @@ function core:UpdateUI()
             row.text:SetFontObject("GameFontHighlightSmall")
         end
         
-        -- UX CRITICAL FIX: Calculate absolute y positions to keep scroll steps pixel-perfect
         local extraSpacing = 0
         if rowId > 1 then
             extraSpacing = isHeader and 14 or (isPlayer and 8 or 2)
@@ -355,10 +384,13 @@ function core:UpdateUI()
         row:SetPoint("TOPLEFT", f.scrollChild, "TOPLEFT", 0, -currentY)
         row:SetPoint("RIGHT", f.scrollChild, "RIGHT", 0, 0)
         
-        currentY = currentY + 15 -- Increment position by base row height
+        currentY = currentY + 15
         row:Show()
         rowId = rowId + 1
     end
+    
+    -- Pull query filter data state
+    local searchText = f.searchBox:GetText():lower()
     
     local guildLines = {}
     local friendLines = {}
@@ -370,47 +402,60 @@ function core:UpdateUI()
         if name then friendsMap[name] = true end
     end
     
+    -- Filter and build matching structures
     for player, data in pairs(MKR_DB) do
         if type(data) == "table" and data.key and data.key ~= "NONE" and player ~= myName then
-            if friendsMap[player] then
-                table.insert(friendLines, player)
-            else
-                table.insert(guildLines, player)
+            local pMatch = string.find(player:lower(), searchText, 1, true)
+            
+            local matchedKeysForPlayer = {}
+            for link in string.gmatch(data.key, "[^,]+") do
+                local displayLink = string.gsub(link, "Mythic Keystone:%s*", "")
+                local kMatch = string.find(displayLink:lower(), searchText, 1, true)
+                
+                -- UX ENGINE UPDATE: Include entry if character, zone instance name, or level matches query
+                if pMatch or kMatch then
+                    table.insert(matchedKeysForPlayer, { link = link, display = displayLink })
+                end
+            end
+            
+            if #matchedKeysForPlayer > 0 then
+                if friendsMap[player] then
+                    table.insert(friendLines, { player = player, keys = matchedKeysForPlayer })
+                else
+                    table.insert(guildLines, { player = player, keys = matchedKeysForPlayer })
+                end
             end
         end
     end
     
+    -- Process Render Operations
     if #guildLines > 0 then
         AddLine("[Guild]", nil, true, false)
-        for _, player in ipairs(guildLines) do
-            AddLine(player .. ":", nil, false, true)
-            local data = MKR_DB[player]
-            for link in string.gmatch(data.key, "[^,]+") do
-                local displayLink = string.gsub(link, "Mythic Keystone:%s*", "")
-                AddLine("   " .. displayLink, link, false, false)
+        for _, entry in ipairs(guildLines) do
+            AddLine(entry.player .. ":", nil, false, true)
+            for _, kInfo in ipairs(entry.keys) do
+                AddLine("   " .. kInfo.display, kInfo.link, false, false)
             end
         end
     end
     
     if #friendLines > 0 then
         AddLine("[Friends]", nil, true, false)
-        for _, player in ipairs(friendLines) do
-            AddLine(player .. ":", nil, false, true)
-            local data = MKR_DB[player]
-            for link in string.gmatch(data.key, "[^,]+") do
-                local displayLink = string.gsub(link, "Mythic Keystone:%s*", "")
-                AddLine("   " .. displayLink, link, false, false)
+        for _, entry in ipairs(friendLines) do
+            AddLine(entry.player .. ":", nil, false, true)
+            for _, kInfo in ipairs(entry.keys) do
+                AddLine("   " .. kInfo.display, kInfo.link, false, false)
             end
         end
     end
     
-    -- Dynamically calculate scroll math constraints
     if rowId == 1 then
         if not f.emptyText then
             f.emptyText = f.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
             f.emptyText:SetPoint("TOPLEFT", f.scrollChild, "TOPLEFT", 0, 0)
-            f.emptyText:SetText("No keys stored.")
+            f.emptyText:SetText(searchText ~= "" and "No search results found." or "No keys stored.")
         end
+        f.emptyText:SetText(searchText ~= "" and "No search results found." or "No keys stored.")
         f.emptyText:Show()
         f.scrollChild:SetHeight(15)
         f.slider:SetMinMaxValues(0, 0)
@@ -422,7 +467,6 @@ function core:UpdateUI()
         local maxScroll = math.max(0, currentY - f.scrollFrame:GetHeight())
         f.slider:SetMinMaxValues(0, maxScroll)
         
-        -- Smooth visibility mapping for the custom scroll track thumb line
         if maxScroll == 0 then
             f.slider:Hide()
             f.slider:SetValue(0)
