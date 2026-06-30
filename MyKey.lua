@@ -27,7 +27,7 @@ function core:Init()
     core:CreateUIFrame()
     core:BroadcastOwnKey()
     
-    print("|cffcb9cff[MKR]|r Addon Loaded. Use |cff00ffff/mykey|r for options, or |cff00ffff/m+|r to toggle the interface.")
+    print("|cffcb9cff[MKR]|r Addon Loaded. Close button injected onto main window frame.")
 end
 
 function core:FindKeys()
@@ -185,6 +185,18 @@ function core:CreateUIFrame()
         if ticker > 0.2 then
             ticker = 0
             if MythicPlusFrame then
+                -- NEW FEATURE: Safe, dynamic Injection of the standard Close Button onto the server frame
+                if not MythicPlusFrame.mkrCloseButton then
+                    local closeBtn = CreateFrame("Button", nil, MythicPlusFrame, "UIPanelCloseButton")
+                    -- Offset parameters to neatly clear the ornate frame corners (-4, -4)
+                    closeBtn:SetPoint("TOPRIGHT", MythicPlusFrame, "TOPRIGHT", -4, -4)
+                    closeBtn:SetFrameLevel((MythicPlusFrame:GetFrameLevel() or 71) + 10)
+                    closeBtn:SetScript("OnClick", function()
+                        MythicPlusFrame:Hide()
+                    end)
+                    MythicPlusFrame.mkrCloseButton = closeBtn
+                end
+
                 if MythicPlusFrame:IsShown() then
                     f:SetFrameStrata(MythicPlusFrame:GetFrameStrata() or "MEDIUM")
                     f:SetFrameLevel((MythicPlusFrame:GetFrameLevel() or 71) + 5)
@@ -413,7 +425,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
     end
 end)
 
--- Option Panel Commands (/mykey and /mykeyres)
+-- Option Panel Commands
 SlashCmdList["MYTHICKEYSTONES"] = function(msg)
     msg = string.lower(msg or "")
     if msg == "guild" then
@@ -442,7 +454,7 @@ end
 SLASH_MYTHICKEYSTONES1 = "/mykeyres"
 SLASH_MYTHICKEYSTONES2 = "/mykey"
 
--- NEW UX FEATURE: MythicPlusFrame Toggle Window Script Commands (/m+ and /mythic)
+-- MythicPlusFrame Toggle Window Script Commands (/m+ and /mythic)
 SlashCmdList["MYTHICPLUSTOGGLE"] = function(msg)
     if MythicPlusFrame then
         if MythicPlusFrame:IsShown() then
@@ -451,7 +463,7 @@ SlashCmdList["MYTHICPLUSTOGGLE"] = function(msg)
             MythicPlusFrame:Show()
         end
     else
-        print("|cffcb9cff[MKR]|r Error: MythicPlusFrame not detected in this session. Is the server module disabled?")
+        print("|cffcb9cff[MKR]|r Error: MythicPlusFrame not detected in this session.")
     end
 end
 SLASH_MYTHICPLUSTOGGLE1 = "/m+"
