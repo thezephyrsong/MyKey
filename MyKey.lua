@@ -1,4 +1,4 @@
--- Mythic Keystones Mesh Network - Core Engine
+-- MyKey Mesh Network - Core Engine V2
 local AddonName, addon = ...
 local core = {}
 addon.core = core
@@ -10,6 +10,8 @@ MKR_DB_CONFIG = MKR_DB_CONFIG or {
     optParty = true,
     optRaid = true,
     optOfficer = true,
+    mySequence = 1,     -- Tracks your personal data update version history
+    lastMyKeyStr = "",   -- Detects structural changes to prevent unnecessary increments
 }
 
 local lastBroadcast = 0
@@ -51,7 +53,7 @@ function core:Init()
     core:CreateUIFrame()
     core:BroadcastOwnKey()
     
-    print("|cffcb9cff[MKR]|r Addon Loaded. Unified omni-search field successfully online.")
+    print("|cffcb9cff[MKR]|r V2 Isolated Mesh Engine Active. Safe from legacy timestamp wars.")
 end
 
 function core:FindKeys()
@@ -73,20 +75,21 @@ function core:FindKeys()
     return keys
 end
 
-function core:GossipRecord(targetPlayer, keyStr, timestamp)
+-- V2 NETWORK: Transmits isolated payloads packed with both timestamp and version counters
+function core:GossipRecord(targetPlayer, keyStr, timestamp, sequence)
     local cutoff = core:GetLastResetTime()
     if timestamp < cutoff then return end
     
-    local payload = string.format("%s~%s~%d", targetPlayer, keyStr, timestamp)
+    local payload = string.format("%s~%s~%d~%d", targetPlayer, keyStr, timestamp, sequence)
     
     if IsInGuild() then
-        SendAddonMessage("MKR_MESH", payload, "GUILD")
+        SendAddonMessage("MKR_MESH2", payload, "GUILD")
     end
     
     for i = 1, GetFriendInfo and GetNumFriends() or 0 do
         local name, _, _, _, connected = GetFriendInfo(i)
         if connected and name then
-            SendAddonMessage("MKR_MESH", payload, "WHISPER", name)
+            SendAddonMessage("MKR_MESH2", payload, "WHISPER", name)
         end
     end
 end
@@ -97,8 +100,14 @@ function core:BroadcastOwnKey()
     local keyStr = (#myKeys > 0) and table.concat(myKeys, ",") or "NONE"
     local now = time()
     
-    MKR_DB[myName] = { key = keyStr, time = now }
-    core:GossipRecord(myName, keyStr, now)
+    -- Increment our sequence authority counter ONLY if our keys actually changed structure
+    if keyStr ~= MKR_DB_CONFIG.lastMyKeyStr then
+        MKR_DB_CONFIG.mySequence = (MKR_DB_CONFIG.mySequence or 0) + 1
+        MKR_DB_CONFIG.lastMyKeyStr = keyStr
+    end
+    
+    MKR_DB[myName] = { key = keyStr, time = now, seq = MKR_DB_CONFIG.mySequence }
+    core:GossipRecord(myName, keyStr, now, MKR_DB_CONFIG.mySequence)
     core:UpdateUI()
 end
 
@@ -108,8 +117,9 @@ function core:GossipEntireDatabase(targetWhisperPlayer)
     if targetWhisperPlayer then
         for player, data in pairs(MKR_DB) do
             if type(data) == "table" and data.key and data.time and data.time >= cutoff then
-                local payload = string.format("%s~%s~%d", player, data.key, data.time)
-                SendAddonMessage("MKR_MESH", payload, "WHISPER", targetWhisperPlayer)
+                local seq = data.seq or 1
+                local payload = string.format("%s~%s~%d~%d", player, data.key, data.time, seq)
+                SendAddonMessage("MKR_MESH2", payload, "WHISPER", targetWhisperPlayer)
             end
         end
         return
@@ -119,9 +129,9 @@ function core:GossipEntireDatabase(targetWhisperPlayer)
     for player, data in pairs(MKR_DB) do
         if type(data) == "table" and data.key and data.time and data.time >= cutoff then
             local delay = math.random(1, 15) * 0.1
-            local p, k, t = player, data.key, data.time
+            local p, k, t, s = player, data.key, data.time, (data.seq or 1)
             core:DelayExecution(delay, function()
-                core:GossipRecord(p, k, t)
+                core:GossipRecord(p, k, t, s)
             end)
         end
     end
@@ -168,20 +178,10 @@ function core:CreateUIFrame()
     
     local pR, pG, pB, pA = 0.52, 0.33, 0.81, 0.85
     
-    -- Outer panel borders
-    local borders = {"TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT"}
-    for _, p in ipairs(borders) do
-        local b = f:CreateTexture(nil, "BORDER")
-        if string.find(p, "TOP") or string.find(p, "BOTTOM") then
-            b:SetHeight(1.5)
-            b:SetPoint(p:gsub("LEFT","RIGHT"), f, p:gsub("LEFT","RIGHT"), 0, 0)
-        else
-            b:SetWidth(1.5)
-            b:SetPoint(p:gsub("TOP","BOTTOM"), f, p:gsub("TOP","BOTTOM"), 0, 0)
-        end
-        b:SetPoint(p, f, p, 0, 0)
-        b:SetTexture(pR, pG, pB, pA)
-    end
+    local bLeft = f:CreateTexture(nil, "BORDER") bLeft:SetWidth(1.5) bLeft:SetPoint("TOPLEFT", f, "TOPLEFT") bLeft:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT") bLeft:SetTexture(pR, pG, pB, pA)
+    local bRight = f:CreateTexture(nil, "BORDER") bRight:SetWidth(1.5) bRight:SetPoint("TOPRIGHT", f, "TOPRIGHT") bRight:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT") bRight:SetTexture(pR, pG, pB, pA)
+    local bTop = f:CreateTexture(nil, "BORDER") bTop:SetHeight(1.5) bTop:SetPoint("TOPLEFT", f, "TOPLEFT") bTop:SetPoint("TOPRIGHT", f, "TOPRIGHT") bTop:SetTexture(pR, pG, pB, pA)
+    local bBottom = f:CreateTexture(nil, "BORDER") bBottom:SetHeight(1.5) bBottom:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT") bBottom:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT") bBottom:SetTexture(pR, pG, pB, pA)
     
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOP", f, "TOP", 0, -12)
@@ -193,7 +193,6 @@ function core:CreateUIFrame()
     titleLine:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -28)
     titleLine:SetTexture(pR, pG, pB, 0.4)
     
-    -- NEW UX FEATURE: Dynamic Native EditBox (Search Input Field)
     local sbBox = CreateFrame("EditBox", nil, f)
     sbBox:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -34)
     sbBox:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -34)
@@ -202,14 +201,8 @@ function core:CreateUIFrame()
     sbBox:SetAutoFocus(false)
     sbBox:SetTextInsets(6, 6, 0, 0)
     
-    local sbBorder = sbBox:CreateTexture(nil, "BORDER")
-    sbBorder:SetPoint("TOPLEFT", sbBox, "TOPLEFT", -1, 1)
-    sbBorder:SetPoint("BOTTOMRIGHT", sbBox, "BOTTOMRIGHT", 1, -1)
-    sbBorder:SetTexture(pR, pG, pB, 0.4)
-    
-    local sbBg = sbBox:CreateTexture(nil, "BACKGROUND")
-    sbBg:SetAllPoints()
-    sbBg:SetTexture(0.02, 0.01, 0.04, 1)
+    local sbBorder = sbBox:CreateTexture(nil, "BORDER") sbBorder:SetPoint("TOPLEFT", sbBox, "TOPLEFT", -1, 1) sbBorder:SetPoint("BOTTOMRIGHT", sbBox, "BOTTOMRIGHT", 1, -1) sbBorder:SetTexture(pR, pG, pB, 0.4)
+    local sbBg = sbBox:CreateTexture(nil, "BACKGROUND") sbBg:SetAllPoints() sbBg:SetTexture(0.02, 0.01, 0.04, 1)
     
     local ph = sbBox:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     ph:SetPoint("LEFT", sbBox, "LEFT", 6, 0)
@@ -222,7 +215,6 @@ function core:CreateUIFrame()
     sbBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     f.searchBox = sbBox
     
-    -- ScrollFrame Layout (Pushed downward to coordinate Y=-62 to leave clean room for the search input layout)
     local sf = CreateFrame("ScrollFrame", nil, f)
     sf:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -62)
     sf:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -22, 12)
@@ -235,7 +227,6 @@ function core:CreateUIFrame()
     sf:SetScrollChild(sc)
     f.scrollChild = sc
     
-    -- Custom tracking scrollbar slider layout
     local sb = CreateFrame("Slider", nil, f)
     sb:SetWidth(4)
     sb:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -62)
@@ -244,10 +235,7 @@ function core:CreateUIFrame()
     sb:SetValue(0)
     sb:SetValueStep(1)
     
-    local thumb = sb:CreateTexture(nil, "BACKGROUND")
-    thumb:SetTexture(pR, pG, pB, pA)
-    thumb:SetWidth(4)
-    thumb:SetHeight(32)
+    local thumb = sb:CreateTexture(nil, "BACKGROUND") thumb:SetTexture(pR, pG, pB, pA) thumb:SetWidth(4) thumb:SetHeight(32)
     sb:SetThumbTexture(thumb)
     f.slider = sb
     
@@ -289,22 +277,19 @@ function core:CreateUIFrame()
                     
                     if not f:IsShown() then
                         f:Show()
-                        SendAddonMessage("MKR_REQ", "REQ", "GUILD")
+                        -- V2 HANDSHAKE ROUTE
+                        SendAddonMessage("MKR_REQ2", "REQ", "GUILD")
                         
                         for i = 1, GetFriendInfo and GetNumFriends() or 0 do
                             local name, _, _, _, connected = GetFriendInfo(i)
                             if connected and name then
-                                SendAddonMessage("MKR_REQ", "REQ", "WHISPER", name)
+                                SendAddonMessage("MKR_REQ2", "REQ", "WHISPER", name)
                             end
                         end
                     end
                     lastState = true
                 else
-                    if lastState then 
-                        f.searchBox:ClearFocus()
-                        f:Hide() 
-                        lastState = false 
-                    end
+                    if lastState then f.searchBox:ClearFocus() f:Hide() lastState = false end
                 end
             else
                 if lastState then f:Hide() lastState = false end
@@ -320,10 +305,7 @@ function core:UpdateUI()
     core:PruneExpiredKeys()
     
     f.rows = f.rows or {}
-    for _, row in ipairs(f.rows) do
-        row:Hide()
-        row.link = nil
-    end
+    for _, row in ipairs(f.rows) do row:Hide() row.link = nil end
     
     local rowId = 1
     local currentY = 0
@@ -332,33 +314,19 @@ function core:UpdateUI()
         if not f.rows[rowId] then
             local row = CreateFrame("Button", nil, f.scrollChild)
             row:SetHeight(15)
-            
             local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            text:SetAllPoints()
-            text:SetJustifyH("LEFT")
-            row.text = text
+            text:SetAllPoints() text:SetJustifyH("LEFT") row.text = text
             
             row:SetScript("OnEnter", function(self)
-                if self.link then
-                    GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
-                    GameTooltip:SetHyperlink(self.link)
-                    GameTooltip:Show()
-                end
+                if self.link then GameTooltip:SetOwner(f, "ANCHOR_RIGHT") GameTooltip:SetHyperlink(self.link) GameTooltip:Show() end
             end)
-            
             row:SetScript("OnLeave", function(self) GameTooltip:Hide() end)
-            
             row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             row:SetScript("OnClick", function(self, button)
                 if self.link then
-                    if IsModifiedClick() then
-                        HandleModifiedItemClick(self.link)
-                    else
-                        SetItemRef(self.link, self.link, button)
-                    end
+                    if IsModifiedClick() then HandleModifiedItemClick(self.link) else SetItemRef(self.link, self.link, button) end
                 end
             end)
-            
             f.rows[rowId] = row
         end
         
@@ -366,18 +334,12 @@ function core:UpdateUI()
         row.link = itemLink
         row.text:SetText(labelText)
         
-        if isHeader then
-            row.text:SetFontObject("GameFontNormal")
-        elseif isPlayer then
-            row.text:SetFontObject("GameFontNormalSmall")
-        else
-            row.text:SetFontObject("GameFontHighlightSmall")
-        end
+        if isHeader then row.text:SetFontObject("GameFontNormal")
+        elseif isPlayer then row.text:SetFontObject("GameFontNormalSmall")
+        else row.text:SetFontObject("GameFontHighlightSmall") end
         
         local extraSpacing = 0
-        if rowId > 1 then
-            extraSpacing = isHeader and 14 or (isPlayer and 8 or 2)
-        end
+        if rowId > 1 then extraSpacing = isHeader and 14 or (isPlayer and 8 or 2) end
         currentY = currentY + extraSpacing
         
         row:ClearAllPoints()
@@ -389,30 +351,24 @@ function core:UpdateUI()
         rowId = rowId + 1
     end
     
-    -- Pull query filter data state
     local searchText = f.searchBox:GetText():lower()
-    
     local guildLines = {}
     local friendLines = {}
     local myName = UnitName("player")
     
     local friendsMap = {}
     for i = 1, GetFriendInfo and GetNumFriends() or 0 do
-        local name = GetFriendInfo(i)
-        if name then friendsMap[name] = true end
+        local name = GetFriendInfo(i) if name then friendsMap[name] = true end
     end
     
-    -- Filter and build matching structures
     for player, data in pairs(MKR_DB) do
         if type(data) == "table" and data.key and data.key ~= "NONE" and player ~= myName then
             local pMatch = string.find(player:lower(), searchText, 1, true)
-            
             local matchedKeysForPlayer = {}
+            
             for link in string.gmatch(data.key, "[^,]+") do
                 local displayLink = string.gsub(link, "Mythic Keystone:%s*", "")
                 local kMatch = string.find(displayLink:lower(), searchText, 1, true)
-                
-                -- UX ENGINE UPDATE: Include entry if character, zone instance name, or level matches query
                 if pMatch or kMatch then
                     table.insert(matchedKeysForPlayer, { link = link, display = displayLink })
                 end
@@ -428,14 +384,11 @@ function core:UpdateUI()
         end
     end
     
-    -- Process Render Operations
     if #guildLines > 0 then
         AddLine("[Guild]", nil, true, false)
         for _, entry in ipairs(guildLines) do
             AddLine(entry.player .. ":", nil, false, true)
-            for _, kInfo in ipairs(entry.keys) do
-                AddLine("   " .. kInfo.display, kInfo.link, false, false)
-            end
+            for _, kInfo in ipairs(entry.keys) do AddLine("   " .. kInfo.display, kInfo.link, false, false) end
         end
     end
     
@@ -443,9 +396,7 @@ function core:UpdateUI()
         AddLine("[Friends]", nil, true, false)
         for _, entry in ipairs(friendLines) do
             AddLine(entry.player .. ":", nil, false, true)
-            for _, kInfo in ipairs(entry.keys) do
-                AddLine("   " .. kInfo.display, kInfo.link, false, false)
-            end
+            for _, kInfo in ipairs(entry.keys) do AddLine("   " .. kInfo.display, kInfo.link, false, false) end
         end
     end
     
@@ -453,26 +404,17 @@ function core:UpdateUI()
         if not f.emptyText then
             f.emptyText = f.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
             f.emptyText:SetPoint("TOPLEFT", f.scrollChild, "TOPLEFT", 0, 0)
-            f.emptyText:SetText(searchText ~= "" and "No search results found." or "No keys stored.")
         end
         f.emptyText:SetText(searchText ~= "" and "No search results found." or "No keys stored.")
         f.emptyText:Show()
         f.scrollChild:SetHeight(15)
-        f.slider:SetMinMaxValues(0, 0)
-        f.slider:Hide()
+        f.slider:SetMinMaxValues(0, 0) f.slider:Hide()
     else
         if f.emptyText then f.emptyText:Hide() end
         f.scrollChild:SetHeight(currentY)
-        
         local maxScroll = math.max(0, currentY - f.scrollFrame:GetHeight())
         f.slider:SetMinMaxValues(0, maxScroll)
-        
-        if maxScroll == 0 then
-            f.slider:Hide()
-            f.slider:SetValue(0)
-        else
-            f.slider:Show()
-        end
+        if maxScroll == 0 then f.slider:Hide() f.slider:SetValue(0) else f.slider:Show() end
     end
 end
 
@@ -497,35 +439,35 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
         local prefix, text, channel, sender = arg1, arg2, arg3, arg4
         if sender then sender = string.match(sender, "([^-]+)") end
         
-        if prefix == "MKR_REQ" then
+        -- V2 TRAFFIC HANDLERS
+        if prefix == "MKR_REQ2" then
             if channel == "WHISPER" and sender then
                 core:GossipEntireDatabase(sender)
             else
                 core:GossipEntireDatabase()
             end
             
-        elseif prefix == "MKR_RESP" then
-            if sender and text then
-                MKR_DB[sender] = { key = text, time = time() }
-                core:UpdateUI()
-            end
-            
-        elseif prefix == "MKR_MESH" and text then
-            local pName, keyStr, tStamp = string.match(text, "([^~]+)~([^~]+)~([^~]+)")
+        elseif prefix == "MKR_MESH2" and text then
+            -- Unpacks structural V2 tuple layout: Name~Keys~Timestamp~Sequence
+            local pName, keyStr, tStamp, seqNum = string.match(text, "([^~]+)~([^~]+)~([^~]+)~([^~]+)")
             tStamp = tonumber(tStamp)
+            seqNum = tonumber(seqNum)
             
-            if pName and keyStr and tStamp then
+            if pName and keyStr and tStamp and seqNum then
                 local lastReset = core:GetLastResetTime()
+                
                 if tStamp >= lastReset then
                     local current = MKR_DB[pName]
-                    if not current or tStamp > current.time then
-                        MKR_DB[pName] = { key = keyStr, time = tStamp }
+                    
+                    -- V2 MESH SELECTION LOGIC: Sequence numbers govern authority, not clocks
+                    if not current or seqNum > (current.seq or 0) then
+                        MKR_DB[pName] = { key = keyStr, time = tStamp, seq = seqNum }
                         core:UpdateUI()
-                    elseif current and current.time > tStamp then
+                    elseif current and (current.seq or 0) > seqNum then
                         local now = GetTime()
                         if not syncThrottle[pName] or (now - syncThrottle[pName]) > 5 then
                             syncThrottle[pName] = now
-                            core:GossipRecord(pName, current.key, current.time)
+                            core:GossipRecord(pName, current.key, current.time, current.seq or 1)
                         end
                     end
                 end
@@ -576,17 +518,10 @@ end
 SLASH_MYTHICKEYSTONES1 = "/mykeyres"
 SLASH_MYTHICKEYSTONES2 = "/mykey"
 
--- MythicPlusFrame Toggle Window Script Commands (/m+ and /mythic)
+-- MythicPlusFrame Toggle Window Script Commands
 SlashCmdList["MYTHICPLUSTOGGLE"] = function(msg)
-    if MythicPlusFrame then
-        if MythicPlusFrame:IsShown() then
-            MythicPlusFrame:Hide()
-        else
-            MythicPlusFrame:Show()
-        end
-    else
-        print("|cffcb9cff[MKR]|r Error: MythicPlusFrame not detected in this session.")
-    end
+    if MythicPlusFrame then if MythicPlusFrame:IsShown() then MythicPlusFrame:Hide() else MythicPlusFrame:Show() end
+    else print("|cffcb9cff[MKR]|r Error: MythicPlusFrame not detected in this session.") end
 end
 SLASH_MYTHICPLUSTOGGLE1 = "/m+"
 SLASH_MYTHICPLUSTOGGLE2 = "/mythic"
