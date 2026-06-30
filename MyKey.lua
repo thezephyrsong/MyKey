@@ -27,7 +27,7 @@ function core:Init()
     core:CreateUIFrame()
     core:BroadcastOwnKey()
     
-    print("|cffcb9cff[MKR]|r Color-Matched Addon Loaded. Type |cff00ffff/mykey|r to see options.")
+    print("|cffcb9cff[MKR]|r Interactive Interface Loaded. Type |cff00ffff/mykey|r to see options.")
 end
 
 function core:FindKeys()
@@ -56,7 +56,7 @@ function core:GossipRecord(targetPlayer, keyStr, timestamp)
         SendAddonMessage("MKR_MESH", payload, "GUILD")
     end
     
-    for i = 1, GetNumFriends() do
+    for i = 1, GetFriendInfo and GetNumFriends() or 0 do
         local name, _, _, _, connected = GetFriendInfo(i)
         if connected and name then
             SendAddonMessage("MKR_MESH", payload, "WHISPER", name)
@@ -129,17 +129,14 @@ end
 function core:CreateUIFrame()
     if core.displayFrame then return end
     
-    -- Main Window Panel Container (Slightly widened to 210 for optimized text readability)
     local f = CreateFrame("Frame", "MKR_GuildKeysSidebar", UIParent)
     f:SetWidth(210)
     
-    -- UX UPGRADE: Color-matched deep void purple background canvas
     local bg = f:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetTexture(0.05, 0.03, 0.09, 0.95)
     f.bg = bg
     
-    -- COLOR MATCH: 4-Way Ornate Framing System (Matches frame filigree purple)
     local pR, pG, pB, pA = 0.52, 0.33, 0.81, 0.85
     
     local borderRight = f:CreateTexture(nil, "BORDER")
@@ -166,26 +163,16 @@ function core:CreateUIFrame()
     borderBottom:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
     borderBottom:SetTexture(pR, pG, pB, pA)
     
-    -- Header Title Placement
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOP", f, "TOP", 0, -12)
     title:SetText("Keystones")
     
-    -- UX UPGRADE: Horizontal title separation accent line
     local titleLine = f:CreateTexture(nil, "ARTWORK")
     titleLine:SetHeight(1)
     titleLine:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -28)
     titleLine:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -28)
     titleLine:SetTexture(pR, pG, pB, 0.4)
     
-    -- Dynamic Content Text Area (Shifted slightly down to clear the accent line)
-    local text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    text:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -36)
-    text:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
-    text:SetJustifyH("LEFT")
-    text:SetJustifyV("TOP")
-    
-    f.text = text
     core.displayFrame = f
     f:Hide()
     
@@ -210,7 +197,7 @@ function core:CreateUIFrame()
                         f:Show()
                         SendAddonMessage("MKR_REQ", "REQ", "GUILD")
                         
-                        for i = 1, GetNumFriends() do
+                        for i = 1, GetFriendInfo and GetNumFriends() or 0 do
                             local name, _, _, _, connected = GetFriendInfo(i)
                             if connected and name then
                                 SendAddonMessage("MKR_REQ", "REQ", "WHISPER", name)
@@ -229,43 +216,141 @@ function core:CreateUIFrame()
 end
 
 function core:UpdateUI()
-    if not core.displayFrame or not core.displayFrame.text then return end
+    if not core.displayFrame then return end
+    local f = core.displayFrame
     
+    f.rows = f.rows or {}
+    
+    -- Recycle and clear visibility settings for all row objects
+    for _, row in ipairs(f.rows) do
+        row:Hide()
+        row.link = nil
+    end
+    
+    local rowId = 1
+    
+    -- Optimized inner factory method handling click mechanics and text layout
+    local function AddLine(labelText, itemLink, isHeader, isPlayer)
+        if not f.rows[rowId] then
+            local row = CreateFrame("Button", nil, f)
+            row:SetHeight(15)
+            
+            local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            text:SetAllPoints()
+            text:SetJustifyH("LEFT")
+            row.text = text
+            
+            -- Tooltip Hook Integration
+            row:SetScript("OnEnter", function(self)
+                if self.link then
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetHyperlink(self.link)
+                    GameTooltip:Show()
+                end
+            end)
+            
+            row:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
+            
+            -- Full Click Handler Setup (Pasting, Tooltips, Link refs)
+            row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            row:SetScript("OnClick", function(self, button)
+                if self.link then
+                    if IsModifiedClick() then
+                        HandleModifiedItemClick(self.link)
+                    else
+                        SetItemRef(self.link, self.link, button)
+                    end
+                end
+            end)
+            
+            f.rows[rowId] = row
+        end
+        
+        local row = f.rows[rowId]
+        row.link = itemLink
+        row.text:SetText(labelText)
+        
+        if isHeader then
+            row.text:SetFontObject("GameFontNormal")
+        elseif isPlayer then
+            row.text:SetFontObject("GameFontNormalSmall")
+        else
+            row.text:SetFontObject("GameFontHighlightSmall")
+        end
+        
+        row:ClearAllPoints()
+        if rowId == 1 then
+            row:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -36)
+            row:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+        else
+            local spacing = isHeader and -14 or (isPlayer and -8 or -2)
+            row:SetPoint("TOPLEFT", f.rows[rowId-1], "BOTTOMLEFT", 0, spacing)
+            row:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+        end
+        
+        row:Show()
+        rowId = rowId + 1
+    end
+    
+    -- Filter database listings
     local guildLines = {}
     local friendLines = {}
     local myName = UnitName("player")
     
     local friendsMap = {}
-    for i = 1, GetNumFriends() do
+    for i = 1, GetFriendInfo and GetNumFriends() or 0 do
         local name = GetFriendInfo(i)
         if name then friendsMap[name] = true end
     end
     
     for player, data in pairs(MKR_DB) do
         if type(data) == "table" and data.key and data.key ~= "NONE" and player ~= myName then
-            local cleanKeys = string.gsub(data.key, ",", "\n   ")
-            local entryText = "|cffcb9cff" .. player .. "|r:\n   " .. cleanKeys
-            
             if friendsMap[player] then
-                table.insert(friendLines, entryText)
+                table.insert(friendLines, player)
             else
-                table.insert(guildLines, entryText)
+                table.insert(guildLines, player)
             end
         end
     end
     
-    local finalDisplay = ""
+    -- Process layout rendering rows
     if #guildLines > 0 then
-        finalDisplay = finalDisplay .. "|cffffd100[Guild]|r\n" .. table.concat(guildLines, "\n\n") .. "\n\n"
-    end
-    if #friendLines > 0 then
-        finalDisplay = finalDisplay .. "|cff00ffff[Friends]|r\n" .. table.concat(friendLines, "\n\n")
+        AddLine("[Guild]", nil, true, false)
+        for _, player in ipairs(guildLines) do
+            AddLine(player .. ":", nil, false, true)
+            local data = MKR_DB[player]
+            for link in string.gmatch(data.key, "[^,]+") do
+                -- UI TEXT FIX: Clear the "Mythic Keystone:" prefix safely from display string
+                local displayLink = string.gsub(link, "Mythic Keystone:%s*", "")
+                AddLine("   " .. displayLink, link, false, false)
+            end
+        end
     end
     
-    if finalDisplay == "" then
-        core.displayFrame.text:SetText("\n|cff888888No keys stored.|r")
+    if #friendLines > 0 then
+        AddLine("[Friends]", nil, true, false)
+        for _, player in ipairs(friendLines) do
+            AddLine(player .. ":", nil, false, true)
+            local data = MKR_DB[player]
+            for link in string.gmatch(data.key, "[^,]+") do
+                local displayLink = string.gsub(link, "Mythic Keystone:%s*", "")
+                AddLine("   " .. displayLink, link, false, false)
+            end
+        end
+    end
+    
+    -- Empty View Fallback Text Block
+    if rowId == 1 then
+        if not f.emptyText then
+            f.emptyText = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            f.emptyText:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -36)
+            f.emptyText:SetText("No keys stored.")
+        end
+        f.emptyText:Show()
     else
-        core.displayFrame.text:SetText(finalDisplay)
+        if f.emptyText then f.emptyText:Hide() end
     end
 end
 
