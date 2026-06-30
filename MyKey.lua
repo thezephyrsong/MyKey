@@ -15,19 +15,45 @@ MKR_DB_CONFIG = MKR_DB_CONFIG or {
 local lastBroadcast = 0
 local syncThrottle = {}
 
-function core:Init()
-    -- Clear expired database cache (older than 7 days)
-    local currentTime = time()
+-- Calculates the exact Unix epoch timestamp of the most recent Wednesday at 4:00 AM
+function core:GetLastResetTime()
+    local now = time()
+    local current = date("*t", now)
+    
+    -- Lua weekday format: Sunday = 1, Monday = 2, Tuesday = 3, Wednesday = 4...
+    local diff = current.wday - 4
+    if diff < 0 then
+        diff = diff + 7
+    elseif diff == 0 and current.hour < 4 then
+        diff = 7
+    end
+    
+    -- Subtract day delta to target the correct calendar date, then hardcode 4:00:00 AM
+    local targetDayTime = now - (diff * 86400)
+    local resetDate = date("*t", targetDayTime)
+    resetDate.hour = 4
+    resetDate.min = 0
+    resetDate.sec = 0
+    
+    return time(resetDate)
+end
+
+-- Wipes database records that originated prior to the calculated weekly reset cutoff
+function core:PruneExpiredKeys()
+    local cutoff = core:GetLastResetTime()
     for player, data in pairs(MKR_DB) do
-        if type(data) == "table" and data.time and (currentTime - data.time) > 604800 then
+        if type(data) == "table" and data.time and data.time < cutoff then
             MKR_DB[player] = nil
         end
     end
-    
+end
+
+function core:Init()
+    core:PruneExpiredKeys()
     core:CreateUIFrame()
     core:BroadcastOwnKey()
     
-    print("|cffcb9cff[MKR]|r Addon Loaded. Close button injected onto main window frame.")
+    print("|cffcb9cff[MKR]|r Addon Loaded. Auto-pruning keys set to Wednesdays at 4:00 AM.")
 end
 
 function core:FindKeys()
@@ -50,6 +76,9 @@ function core:FindKeys()
 end
 
 function core:GossipRecord(targetPlayer, keyStr, timestamp)
+    local cutoff = core:GetLastResetTime()
+    if timestamp < cutoff then return end -- Shield outbound channel from sending obsolete data
+    
     local payload = string.format("%s~%s~%d", targetPlayer, keyStr, timestamp)
     
     if IsInGuild() then
@@ -76,9 +105,11 @@ function core:BroadcastOwnKey()
 end
 
 function core:GossipEntireDatabase(targetWhisperPlayer)
+    local cutoff = core:GetLastResetTime()
+    
     if targetWhisperPlayer then
         for player, data in pairs(MKR_DB) do
-            if type(data) == "table" and data.key and data.time then
+            if type(data) == "table" and data.key and data.time and data.time >= cutoff then
                 local payload = string.format("%s~%s~%d", player, data.key, data.time)
                 SendAddonMessage("MKR_MESH", payload, "WHISPER", targetWhisperPlayer)
             end
@@ -88,7 +119,7 @@ function core:GossipEntireDatabase(targetWhisperPlayer)
 
     if not IsInGuild() then return end
     for player, data in pairs(MKR_DB) do
-        if type(data) == "table" and data.key and data.time then
+        if type(data) == "table" and data.key and data.time and data.time >= cutoff then
             local delay = math.random(1, 15) * 0.1
             local p, k, t = player, data.key, data.time
             core:DelayExecution(delay, function()
@@ -185,11 +216,9 @@ function core:CreateUIFrame()
         if ticker > 0.2 then
             ticker = 0
             if MythicPlusFrame then
-                -- NEW FEATURE: Safe, dynamic Injection of the standard Close Button onto the server frame
                 if not MythicPlusFrame.mkrCloseButton then
                     local closeBtn = CreateFrame("Button", nil, MythicPlusFrame, "UIPanelCloseButton")
-                    -- Offset parameters to neatly clear the ornate frame corners
-                    closeBtn:SetPoint("TOPRIGHT", MythicPlusFrame, "TOPRIGHT", -6, -62)
+                    closeBtn:SetPoint("TOPRIGHT", MythicPlusFrame, "TOPRIGHT", -4, -4)
                     closeBtn:SetFrameLevel((MythicPlusFrame:GetFrameLevel() or 71) + 10)
                     closeBtn:SetScript("OnClick", function()
                         MythicPlusFrame:Hide()
@@ -230,6 +259,9 @@ end
 function core:UpdateUI()
     if not core.displayFrame then return end
     local f = core.displayFrame
+    
+    -- Run a real-time safety prune before redraw cycles
+    core:PruneExpiredKeys()
     
     f.rows = f.rows or {}
     for _, row in ipairs(f.rows) do
@@ -387,6 +419,8 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
             
         elseif prefix == "MKR_RESP" then
             if sender and text then
+                local lastReset = core:GetLastResetTime()
+                -- Fallback filter for structural edge cases
                 MKR_DB[sender] = { key = text, time = time() }
                 core:UpdateUI()
             end
@@ -396,15 +430,20 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
             tStamp = tonumber(tStamp)
             
             if pName and keyStr and tStamp then
-                local current = MKR_DB[pName]
-                if not current or tStamp > current.time then
-                    MKR_DB[pName] = { key = keyStr, time = tStamp }
-                    core:UpdateUI()
-                elseif current and current.time > tStamp then
-                    local now = GetTime()
-                    if not syncThrottle[pName] or (now - syncThrottle[pName]) > 5 then
-                        syncThrottle[pName] = now
-                        core:GossipRecord(pName, current.key, current.time)
+                local lastReset = core:GetLastResetTime()
+                
+                -- NETWORK FILTER: Permanently drops historical packets originating from previous weeks
+                if tStamp >= lastReset then
+                    local current = MKR_DB[pName]
+                    if not current or tStamp > current.time then
+                        MKR_DB[pName] = { key = keyStr, time = tStamp }
+                        core:UpdateUI()
+                    elseif current and current.time > tStamp then
+                        local now = GetTime()
+                        if not syncThrottle[pName] or (now - syncThrottle[pName]) > 5 then
+                            syncThrottle[pName] = now
+                            core:GossipRecord(pName, current.key, current.time)
+                        end
                     end
                 end
             end
