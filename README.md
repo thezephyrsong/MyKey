@@ -2,7 +2,8 @@
 
 A lightweight, standalone World of Warcraft micro-addon designed for 3.3.5a private server frameworks. **MyKey** automates the tracking, synchronization, and reporting of custom Mythic+ keystones across your guild completely hands-free using an invisible peer-to-peer gossip protocol.
 
-<img width="1272" height="710" alt="image" src="https://github.com/user-attachments/assets/c7462e5d-53d4-489b-b6db-28e0da1d064e" />
+<img width="1276" height="694" alt="image" src="https://github.com/user-attachments/assets/9c52d3e0-ef34-4112-adcd-4470d7885a5c" />
+
 
 
 ---
