@@ -261,7 +261,7 @@ function core:CreateUIFrame()
             if MythicPlusFrame then
                 if not MythicPlusFrame.mkrCloseButton then
                     local closeBtn = CreateFrame("Button", nil, MythicPlusFrame, "UIPanelCloseButton")
-                    closeBtn:SetPoint("TOPRIGHT", MythicPlusFrame, "TOPRIGHT", -4, -4)
+                    closeBtn:SetPoint("TOPRIGHT", MythicPlusFrame, "TOPRIGHT", -6, -62)
                     closeBtn:SetFrameLevel((MythicPlusFrame:GetFrameLevel() or 71) + 10)
                     closeBtn:SetScript("OnClick", function() MythicPlusFrame:Hide() end)
                     MythicPlusFrame.mkrCloseButton = closeBtn
