@@ -16,10 +16,9 @@ A lightweight, standalone World of Warcraft micro-addon designed for 3.3.5a priv
 
 ## 🛠️ Installation
 
-1. Navigate to your World of Warcraft installation directory.
-2. Open the `Interface\AddOns\` folder.
-3. Create a brand new folder named exactly **`MyKey`** (capitalization matters!).
-4. Drop your `MyKey.toc` and `MyKey.lua` files inside that folder.
+1. Download this as a `MyKey.zip` file using the green `<> Code` button
+2. Extract that .zip to your World of Warcraft installation directory in the `Interface\AddOns\` folder.
+4. Make sure the new folder is named exactly **`MyKey`** (capitalization matters!).
 
 ### Expected Directory Tree:
 ```
