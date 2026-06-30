@@ -27,7 +27,7 @@ function core:Init()
     core:CreateUIFrame()
     core:BroadcastOwnKey()
     
-    print("|cffcb9cff[MKR]|r Standalone Addon Loaded. Type |cff00ffff/mykey|r to see options.")
+    print("|cffcb9cff[MKR]|r Color-Matched Addon Loaded. Type |cff00ffff/mykey|r to see options.")
 end
 
 function core:FindKeys()
@@ -49,16 +49,13 @@ function core:FindKeys()
     return keys
 end
 
--- Sends a record to the Guild and targets online friends directly via Whisper
 function core:GossipRecord(targetPlayer, keyStr, timestamp)
     local payload = string.format("%s~%s~%d", targetPlayer, keyStr, timestamp)
     
-    -- 1. Guild Broadcast Pathway
     if IsInGuild() then
         SendAddonMessage("MKR_MESH", payload, "GUILD")
     end
     
-    -- 2. Targeted Friends Pathway
     for i = 1, GetNumFriends() do
         local name, _, _, _, connected = GetFriendInfo(i)
         if connected and name then
@@ -79,7 +76,6 @@ function core:BroadcastOwnKey()
 end
 
 function core:GossipEntireDatabase(targetWhisperPlayer)
-    -- If a friend requested updates, reply ONLY to them via whisper to prevent network spam
     if targetWhisperPlayer then
         for player, data in pairs(MKR_DB) do
             if type(data) == "table" and data.key and data.time then
@@ -90,7 +86,6 @@ function core:GossipEntireDatabase(targetWhisperPlayer)
         return
     end
 
-    -- Otherwise, cascade out standard staggered updates to the Guild channel
     if not IsInGuild() then return end
     for player, data in pairs(MKR_DB) do
         if type(data) == "table" and data.key and data.time then
@@ -134,28 +129,59 @@ end
 function core:CreateUIFrame()
     if core.displayFrame then return end
     
+    -- Main Window Panel Container (Slightly widened to 210 for optimized text readability)
     local f = CreateFrame("Frame", "MKR_GuildKeysSidebar", UIParent)
-    f:SetWidth(200)
+    f:SetWidth(210)
     
+    -- UX UPGRADE: Color-matched deep void purple background canvas
     local bg = f:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
-    bg:SetTexture(0.05, 0.05, 0.05, 0.92)
+    bg:SetTexture(0.05, 0.03, 0.09, 0.95)
     f.bg = bg
     
-    local border = f:CreateTexture(nil, "BORDER")
-    border:SetWidth(1)
-    border:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-    border:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
-    border:SetTexture(0.3, 0.3, 0.3, 1)
-    f.border = border
+    -- COLOR MATCH: 4-Way Ornate Framing System (Matches frame filigree purple)
+    local pR, pG, pB, pA = 0.52, 0.33, 0.81, 0.85
     
+    local borderRight = f:CreateTexture(nil, "BORDER")
+    borderRight:SetWidth(1.5)
+    borderRight:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+    borderRight:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+    borderRight:SetTexture(pR, pG, pB, pA)
+    
+    local borderLeft = f:CreateTexture(nil, "BORDER")
+    borderLeft:SetWidth(1.5)
+    borderLeft:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    borderLeft:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
+    borderLeft:SetTexture(pR, pG, pB, pA)
+    
+    local borderTop = f:CreateTexture(nil, "BORDER")
+    borderTop:SetHeight(1.5)
+    borderTop:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    borderTop:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+    borderTop:SetTexture(pR, pG, pB, pA)
+    
+    local borderBottom = f:CreateTexture(nil, "BORDER")
+    borderBottom:SetHeight(1.5)
+    borderBottom:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
+    borderBottom:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+    borderBottom:SetTexture(pR, pG, pB, pA)
+    
+    -- Header Title Placement
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOP", f, "TOP", 0, -12)
     title:SetText("Keystones")
     
+    -- UX UPGRADE: Horizontal title separation accent line
+    local titleLine = f:CreateTexture(nil, "ARTWORK")
+    titleLine:SetHeight(1)
+    titleLine:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -28)
+    titleLine:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -28)
+    titleLine:SetTexture(pR, pG, pB, 0.4)
+    
+    -- Dynamic Content Text Area (Shifted slightly down to clear the accent line)
     local text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    text:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -32)
-    text:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 12)
+    text:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -36)
+    text:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
     text:SetJustifyH("LEFT")
     text:SetJustifyV("TOP")
     
@@ -177,16 +203,13 @@ function core:CreateUIFrame()
                     f:SetFrameLevel((MythicPlusFrame:GetFrameLevel() or 71) + 5)
                     
                     f:ClearAllPoints()
-                    f:SetPoint("TOPRIGHT", MythicPlusFrame, "TOPLEFT", -5, -32)
-                    f:SetPoint("BOTTOMRIGHT", MythicPlusFrame, "BOTTOMLEFT", -5, 32)
+                    f:SetPoint("TOPRIGHT", MythicPlusFrame, "TOPLEFT", -4, -32)
+                    f:SetPoint("BOTTOMRIGHT", MythicPlusFrame, "BOTTOMLEFT", -4, 32)
                     
                     if not f:IsShown() then
                         f:Show()
-                        
-                        -- Global Handshake: Ping the Guild
                         SendAddonMessage("MKR_REQ", "REQ", "GUILD")
                         
-                        -- Targeted Handshake: Silent whisper pings to all online friends
                         for i = 1, GetNumFriends() do
                             local name, _, _, _, connected = GetFriendInfo(i)
                             if connected and name then
@@ -212,7 +235,6 @@ function core:UpdateUI()
     local friendLines = {}
     local myName = UnitName("player")
     
-    -- Generate an optimized O(1) map of online friends for quick segregation
     local friendsMap = {}
     for i = 1, GetNumFriends() do
         local name = GetFriendInfo(i)
@@ -232,7 +254,6 @@ function core:UpdateUI()
         end
     end
     
-    -- Construct Categorized Interface Layout
     local finalDisplay = ""
     if #guildLines > 0 then
         finalDisplay = finalDisplay .. "|cffffd100[Guild]|r\n" .. table.concat(guildLines, "\n\n") .. "\n\n"
@@ -271,7 +292,6 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
         
         if prefix == "MKR_REQ" then
             if channel == "WHISPER" and sender then
-                -- Direct Whisper reply targeting ONLY the requesting friend
                 core:GossipEntireDatabase(sender)
             else
                 core:GossipEntireDatabase()
@@ -317,10 +337,9 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
     end
 end)
 
--- Native Option Control Command Processing Matrix
+-- Option Panel Cmds
 SlashCmdList["MYTHICKEYSTONES"] = function(msg)
     msg = string.lower(msg or "")
-    
     if msg == "guild" then
         MKR_DB_CONFIG.optGuild = not MKR_DB_CONFIG.optGuild
         print("|cffcb9cff[MKR]|r Guild Chat auto-response is now: " .. (MKR_DB_CONFIG.optGuild and "|cff00ff00ON|r" or "|cffff0000OFF|r"))
