@@ -53,7 +53,7 @@ function core:Init()
     core:CreateUIFrame()
     core:BroadcastOwnKey()
     
-    print("|cffcb9cff[MKR]|r V2 Isolated Mesh Engine Active. Safe from legacy timestamp wars.")
+    print("|cffcb9cff[MKR]|r V2 Active. Guildmates are now prioritized in the Guild category.")
 end
 
 function core:FindKeys()
@@ -75,7 +75,6 @@ function core:FindKeys()
     return keys
 end
 
--- V2 NETWORK: Transmits isolated payloads packed with both timestamp and version counters
 function core:GossipRecord(targetPlayer, keyStr, timestamp, sequence)
     local cutoff = core:GetLastResetTime()
     if timestamp < cutoff then return end
@@ -100,7 +99,6 @@ function core:BroadcastOwnKey()
     local keyStr = (#myKeys > 0) and table.concat(myKeys, ",") or "NONE"
     local now = time()
     
-    -- Increment our sequence authority counter ONLY if our keys actually changed structure
     if keyStr ~= MKR_DB_CONFIG.lastMyKeyStr then
         MKR_DB_CONFIG.mySequence = (MKR_DB_CONFIG.mySequence or 0) + 1
         MKR_DB_CONFIG.lastMyKeyStr = keyStr
@@ -178,10 +176,19 @@ function core:CreateUIFrame()
     
     local pR, pG, pB, pA = 0.52, 0.33, 0.81, 0.85
     
-    local bLeft = f:CreateTexture(nil, "BORDER") bLeft:SetWidth(1.5) bLeft:SetPoint("TOPLEFT", f, "TOPLEFT") bLeft:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT") bLeft:SetTexture(pR, pG, pB, pA)
-    local bRight = f:CreateTexture(nil, "BORDER") bRight:SetWidth(1.5) bRight:SetPoint("TOPRIGHT", f, "TOPRIGHT") bRight:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT") bRight:SetTexture(pR, pG, pB, pA)
-    local bTop = f:CreateTexture(nil, "BORDER") bTop:SetHeight(1.5) bTop:SetPoint("TOPLEFT", f, "TOPLEFT") bTop:SetPoint("TOPRIGHT", f, "TOPRIGHT") bTop:SetTexture(pR, pG, pB, pA)
-    local bBottom = f:CreateTexture(nil, "BORDER") bBottom:SetHeight(1.5) bBottom:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT") bBottom:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT") bBottom:SetTexture(pR, pG, pB, pA)
+    local borders = {"TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT"}
+    for _, p in ipairs(borders) do
+        local b = f:CreateTexture(nil, "BORDER")
+        if string.find(p, "TOP") or string.find(p, "BOTTOM") then
+            b:SetHeight(1.5)
+            b:SetPoint(p:gsub("LEFT","RIGHT"), f, p:gsub("LEFT","RIGHT"), 0, 0)
+        else
+            b:SetWidth(1.5)
+            b:SetPoint(p:gsub("TOP","BOTTOM"), f, p:gsub("TOP","BOTTOM"), 0, 0)
+        end
+        b:SetPoint(p, f, p, 0, 0)
+        b:SetTexture(pR, pG, pB, pA)
+    end
     
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOP", f, "TOP", 0, -12)
@@ -277,7 +284,6 @@ function core:CreateUIFrame()
                     
                     if not f:IsShown() then
                         f:Show()
-                        -- V2 HANDSHAKE ROUTE
                         SendAddonMessage("MKR_REQ2", "REQ", "GUILD")
                         
                         for i = 1, GetFriendInfo and GetNumFriends() or 0 do
@@ -356,9 +362,19 @@ function core:UpdateUI()
     local friendLines = {}
     local myName = UnitName("player")
     
+    -- PRIORITY FIX: Map live online friends list
     local friendsMap = {}
     for i = 1, GetFriendInfo and GetNumFriends() or 0 do
         local name = GetFriendInfo(i) if name then friendsMap[name] = true end
+    end
+    
+    -- PRIORITY FIX: Map live local guild roster structure 
+    local guildMap = {}
+    if IsInGuild() then
+        for i = 1, GetNumGuildMembers() do
+            local name = GetGuildRosterInfo(i)
+            if name then guildMap[name] = true end
+        end
     end
     
     for player, data in pairs(MKR_DB) do
@@ -375,9 +391,13 @@ function core:UpdateUI()
             end
             
             if #matchedKeysForPlayer > 0 then
-                if friendsMap[player] then
+                -- PRIORITY FIX: Guildmates take absolute sorting precedence over friend list assignment
+                if guildMap[player] then
+                    table.insert(guildLines, { player = player, keys = matchedKeysForPlayer })
+                elseif friendsMap[player] then
                     table.insert(friendLines, { player = player, keys = matchedKeysForPlayer })
                 else
+                    -- Fallback case for mesh sync profiles
                     table.insert(guildLines, { player = player, keys = matchedKeysForPlayer })
                 end
             end
@@ -400,128 +420,4 @@ function core:UpdateUI()
         end
     end
     
-    if rowId == 1 then
-        if not f.emptyText then
-            f.emptyText = f.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            f.emptyText:SetPoint("TOPLEFT", f.scrollChild, "TOPLEFT", 0, 0)
-        end
-        f.emptyText:SetText(searchText ~= "" and "No search results found." or "No keys stored.")
-        f.emptyText:Show()
-        f.scrollChild:SetHeight(15)
-        f.slider:SetMinMaxValues(0, 0) f.slider:Hide()
-    else
-        if f.emptyText then f.emptyText:Hide() end
-        f.scrollChild:SetHeight(currentY)
-        local maxScroll = math.max(0, currentY - f.scrollFrame:GetHeight())
-        f.slider:SetMinMaxValues(0, maxScroll)
-        if maxScroll == 0 then f.slider:Hide() f.slider:SetValue(0) else f.slider:Show() end
-    end
-end
-
--- Native Event Processing Loop
-local eventFrame = CreateFrame("Frame")
-eventFrame:RegisterEvent("ADDON_LOADED")
-eventFrame:RegisterEvent("CHAT_MSG_ADDON")
-eventFrame:RegisterEvent("BAG_UPDATE")
-eventFrame:RegisterEvent("PLAYER_LOGIN")
-eventFrame:RegisterEvent("CHAT_MSG_PARTY")
-eventFrame:RegisterEvent("CHAT_MSG_PARTY_LEADER")
-eventFrame:RegisterEvent("CHAT_MSG_RAID")
-eventFrame:RegisterEvent("CHAT_MSG_RAID_LEADER")
-eventFrame:RegisterEvent("CHAT_MSG_GUILD")
-eventFrame:RegisterEvent("CHAT_MSG_OFFICER")
-
-eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
-    if event == "ADDON_LOADED" and arg1 == AddonName then
-        core:Init()
-        
-    elseif event == "CHAT_MSG_ADDON" then
-        local prefix, text, channel, sender = arg1, arg2, arg3, arg4
-        if sender then sender = string.match(sender, "([^-]+)") end
-        
-        -- V2 TRAFFIC HANDLERS
-        if prefix == "MKR_REQ2" then
-            if channel == "WHISPER" and sender then
-                core:GossipEntireDatabase(sender)
-            else
-                core:GossipEntireDatabase()
-            end
-            
-        elseif prefix == "MKR_MESH2" and text then
-            -- Unpacks structural V2 tuple layout: Name~Keys~Timestamp~Sequence
-            local pName, keyStr, tStamp, seqNum = string.match(text, "([^~]+)~([^~]+)~([^~]+)~([^~]+)")
-            tStamp = tonumber(tStamp)
-            seqNum = tonumber(seqNum)
-            
-            if pName and keyStr and tStamp and seqNum then
-                local lastReset = core:GetLastResetTime()
-                
-                if tStamp >= lastReset then
-                    local current = MKR_DB[pName]
-                    
-                    -- V2 MESH SELECTION LOGIC: Sequence numbers govern authority, not clocks
-                    if not current or seqNum > (current.seq or 0) then
-                        MKR_DB[pName] = { key = keyStr, time = tStamp, seq = seqNum }
-                        core:UpdateUI()
-                    elseif current and (current.seq or 0) > seqNum then
-                        local now = GetTime()
-                        if not syncThrottle[pName] or (now - syncThrottle[pName]) > 5 then
-                            syncThrottle[pName] = now
-                            core:GossipRecord(pName, current.key, current.time, current.seq or 1)
-                        end
-                    end
-                end
-            end
-        end
-        
-    elseif event == "BAG_UPDATE" or event == "PLAYER_LOGIN" then
-        local now = GetTime()
-        if (now - lastBroadcast) > 3 then
-            lastBroadcast = now
-            core:BroadcastOwnKey()
-        end
-        
-    elseif string.find(event, "CHAT_MSG_") then
-        local msg = arg1
-        if msg and type(msg) == "string" and string.lower(msg) == "?keys" then
-            core:ReportKeysChat(event)
-        end
-    end
-end)
-
--- Option Panel Commands
-SlashCmdList["MYTHICKEYSTONES"] = function(msg)
-    msg = string.lower(msg or "")
-    if msg == "guild" then
-        MKR_DB_CONFIG.optGuild = not MKR_DB_CONFIG.optGuild
-        print("|cffcb9cff[MKR]|r Guild Chat auto-response is now: " .. (MKR_DB_CONFIG.optGuild and "|cff00ff00ON|r" or "|cffff0000OFF|r"))
-    elseif msg == "party" then
-        MKR_DB_CONFIG.optParty = not MKR_DB_CONFIG.optParty
-        print("|cffcb9cff[MKR]|r Party Chat auto-response is now: " .. (MKR_DB_CONFIG.optParty and "|cff00ff00ON|r" or "|cffff0000OFF|r"))
-    elseif msg == "raid" then
-        MKR_DB_CONFIG.optRaid = not MKR_DB_CONFIG.optRaid
-        print("|cffcb9cff[MKR]|r Raid Chat auto-response is now: " .. (MKR_DB_CONFIG.optRaid and "|cff00ff00ON|r" or "|cffff0000OFF|r"))
-    elseif msg == "officer" then
-        MKR_DB_CONFIG.optOfficer = not MKR_DB_CONFIG.optOfficer
-        print("|cffcb9cff[MKR]|r Officer Chat auto-response is now: " .. (MKR_DB_CONFIG.optOfficer and "|cff00ff00ON|r" or "|cffff0000OFF|r"))
-    else
-        local keys = core:FindKeys()
-        print("|cffcb9cff--- Mythic Keystones Local Control Panel ---|r")
-        print("Your Active Keys: " .. (#keys > 0 and table.concat(keys, " & ") or "|cff888888None Found|r"))
-        print("|cff00ffffToggles (Type /mykey [option]):|r")
-        print("  |cffcb9cffguild|r - Guild Channel: " .. (MKR_DB_CONFIG.optGuild and "|cff00ff00ON|r" or "|cffff0000OFF|r"))
-        print("  |cffcb9cffparty|r - Party Channel: " .. (MKR_DB_CONFIG.optParty and "|cff00ff00ON|r" or "|cffff0000OFF|r"))
-        print("  |cffcb9cffraid|r - Raid Channel: " .. (MKR_DB_CONFIG.optRaid and "|cff00ff00ON|r" or "|cffff0000OFF|r"))
-        print("  |cffcb9cffofficer|r - Officer Channel: " .. (MKR_DB_CONFIG.optOfficer and "|cff00ff00ON|r" or "|cffff0000OFF|r"))
-    end
-end
-SLASH_MYTHICKEYSTONES1 = "/mykeyres"
-SLASH_MYTHICKEYSTONES2 = "/mykey"
-
--- MythicPlusFrame Toggle Window Script Commands
-SlashCmdList["MYTHICPLUSTOGGLE"] = function(msg)
-    if MythicPlusFrame then if MythicPlusFrame:IsShown() then MythicPlusFrame:Hide() else MythicPlusFrame:Show() end
-    else print("|cffcb9cff[MKR]|r Error: MythicPlusFrame not detected in this session.") end
-end
-SLASH_MYTHICPLUSTOGGLE1 = "/m+"
-SLASH_MYTHICPLUSTOGGLE2 = "/mythic"
+    if rowId
