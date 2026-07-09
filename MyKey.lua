@@ -362,18 +362,47 @@ function core:UpdateUI()
     local friendLines = {}
     local myName = UnitName("player")
     
-    -- PRIORITY FIX: Map live online friends list
+    -- Helper function to apply class color or offline grey
+    local function GetColoredPlayerName(name, info)
+        if not info or not info.online then
+            return "|cff888888" .. name .. "|r"
+        elseif info.class and RAID_CLASS_COLORS[info.class] then
+            local color = RAID_CLASS_COLORS[info.class]
+            local colorStr = color.colorStr or string.format("ff%02x%02x%02x", color.r * 255, color.g * 255, color.b * 255)
+            return "|c" .. colorStr .. name .. "|r"
+        end
+        return name
+    end
+
+    -- PRIORITY FIX: Map live online friends list with class & online status
     local friendsMap = {}
-    for i = 1, GetFriendInfo and GetNumFriends() or 0 do
-        local name = GetFriendInfo(i) if name then friendsMap[name] = true end
+    if C_FriendList and C_FriendList.GetNumFriends then
+        for i = 1, C_FriendList.GetNumFriends() do
+            local info = C_FriendList.GetFriendInfoByIndex(i)
+            if info and info.name then
+                local shortName = string.match(info.name, "([^-]+)")
+                friendsMap[shortName] = { class = info.className, online = info.connected }
+            end
+        end
+    elseif GetFriendInfo then
+        for i = 1, GetNumFriends() or 0 do
+            local name, _, class, _, connected = GetFriendInfo(i)
+            if name then
+                local shortName = string.match(name, "([^-]+)")
+                friendsMap[shortName] = { class = class, online = connected }
+            end
+        end
     end
     
-    -- PRIORITY FIX: Map live local guild roster structure 
+    -- PRIORITY FIX: Map live local guild roster structure with class & online status
     local guildMap = {}
     if IsInGuild() then
         for i = 1, GetNumGuildMembers() do
-            local name = GetGuildRosterInfo(i)
-            if name then guildMap[name] = true end
+            local name, _, _, _, _, _, _, _, online, _, classFileName = GetGuildRosterInfo(i)
+            if name then
+                local shortName = string.match(name, "([^-]+)")
+                guildMap[shortName] = { class = classFileName, online = online }
+            end
         end
     end
     
@@ -393,12 +422,12 @@ function core:UpdateUI()
             if #matchedKeysForPlayer > 0 then
                 -- PRIORITY FIX: Guildmates take absolute sorting precedence over friend list assignment
                 if guildMap[player] then
-                    table.insert(guildLines, { player = player, keys = matchedKeysForPlayer })
+                    table.insert(guildLines, { player = player, keys = matchedKeysForPlayer, info = guildMap[player] })
                 elseif friendsMap[player] then
-                    table.insert(friendLines, { player = player, keys = matchedKeysForPlayer })
+                    table.insert(friendLines, { player = player, keys = matchedKeysForPlayer, info = friendsMap[player] })
                 else
                     -- Fallback case for mesh sync profiles
-                    table.insert(guildLines, { player = player, keys = matchedKeysForPlayer })
+                    table.insert(guildLines, { player = player, keys = matchedKeysForPlayer, info = nil })
                 end
             end
         end
@@ -407,7 +436,8 @@ function core:UpdateUI()
     if #guildLines > 0 then
         AddLine("[Guild]", nil, true, false)
         for _, entry in ipairs(guildLines) do
-            AddLine(entry.player .. ":", nil, false, true)
+            local displayName = GetColoredPlayerName(entry.player, entry.info)
+            AddLine(displayName .. ":", nil, false, true)
             for _, kInfo in ipairs(entry.keys) do AddLine("   " .. kInfo.display, kInfo.link, false, false) end
         end
     end
@@ -415,7 +445,8 @@ function core:UpdateUI()
     if #friendLines > 0 then
         AddLine("[Friends]", nil, true, false)
         for _, entry in ipairs(friendLines) do
-            AddLine(entry.player .. ":", nil, false, true)
+            local displayName = GetColoredPlayerName(entry.player, entry.info)
+            AddLine(displayName .. ":", nil, false, true)
             for _, kInfo in ipairs(entry.keys) do AddLine("   " .. kInfo.display, kInfo.link, false, false) end
         end
     end
