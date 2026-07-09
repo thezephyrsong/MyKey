@@ -4,3 +4,4 @@
 ## Notes: Real-time peer-to-peer guild keystone registry and database sync.
 ## SavedVariables: MKR_DB
 MyKey.lua
+guildprofessions.lua
