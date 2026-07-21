@@ -530,8 +530,11 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
         
     elseif string.find(event, "CHAT_MSG_") then
         local msg = arg1
-        if msg and type(msg) == "string" and string.lower(msg) == "?keys" then
-            core:ReportKeysChat(event)
+        if msg and type(msg) == "string" then
+            local lowerMsg = string.lower(msg)
+            if lowerMsg == "?keys" or lowerMsg == "#keys" then
+                core:ReportKeysChat(event)
+            end
         end
     end
 end)
